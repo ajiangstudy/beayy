@@ -14,6 +14,109 @@ const KDF = { alg: "argon2id", m: 65536, t: 3, p: 1 };
 
 export default { async fetch(req, env) { try { return await route(req, env); } catch (e) { return json({ error: String(e && e.message ? e.message : e) }, 500); } } };
 
+function userBlobStore(env, user) {
+  const id = env.BLOBS.idFromName(user);
+  return env.BLOBS.get(id);
+}
+
+/**
+ * 每个账号独立一个 SQLite Durable Object，只存客户端上传的加密块。
+ * 单条 BLOB 保持在 2 MB 行上限以内；分块上传与下载兼容 50 MiB 的客户端块。
+ */
+export class BeayyBlobStore {
+  constructor(ctx, env) {
+    this.ctx = ctx;
+    this.sql = ctx.storage.sql;
+    this.sql.exec(
+      "CREATE TABLE IF NOT EXISTS blob_objects (device TEXT NOT NULL, segment TEXT NOT NULL, size INTEGER NOT NULL, PRIMARY KEY (device, segment))",
+    );
+    this.sql.exec(
+      "CREATE TABLE IF NOT EXISTS blob_chunks (device TEXT NOT NULL, segment TEXT NOT NULL, part INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (device, segment, part))",
+    );
+  }
+
+  async fetch(req) {
+    try {
+      const url = new URL(req.url);
+      let p;
+      try { p = url.pathname.split("/").filter(Boolean).map((part) => decodeURIComponent(part)); }
+      catch (_e) { return json({ error: "路径不合法" }, 400); }
+
+      if (p[0] === "account" && req.method === "DELETE") {
+        this.ctx.storage.transactionSync(() => {
+          this.sql.exec("DELETE FROM blob_chunks");
+          this.sql.exec("DELETE FROM blob_objects");
+        });
+        return json({ ok: true });
+      }
+
+      if (p[0] !== "blob" || p.length !== 3) return json({ error: "没有这个接口" }, 404);
+      const device = p[1], segment = p[2];
+      if (!NAME.test(device) || !NAME.test(segment)) return json({ error: "设备名或分段名不合法" }, 400);
+
+      if (req.method === "PUT") {
+        const body = await req.arrayBuffer();
+        if (body.byteLength > MAX_BLOB) return json({ error: "太大了" }, 413);
+        // SQLite-backed Durable Objects 的 BLOB/行大小上限是 2 MB；预留空间后使用 1.8 MB 分块。
+        const chunkSize = 1_800_000;
+        const count = Math.ceil(body.byteLength / chunkSize);
+        this.ctx.storage.transactionSync(() => {
+          this.sql.exec("DELETE FROM blob_chunks WHERE device = ? AND segment = ?", device, segment);
+          for (let part = 0; part < count; part++) {
+            const start = part * chunkSize;
+            const chunk = body.slice(start, Math.min(start + chunkSize, body.byteLength));
+            this.sql.exec(
+              "INSERT INTO blob_chunks (device, segment, part, data) VALUES (?, ?, ?, ?)",
+              device, segment, part, chunk,
+            );
+          }
+          this.sql.exec(
+            "INSERT INTO blob_objects (device, segment, size) VALUES (?, ?, ?) ON CONFLICT (device, segment) DO UPDATE SET size = excluded.size",
+            device, segment, body.byteLength,
+          );
+        });
+        return json({ ok: true, size: body.byteLength });
+      }
+
+      if (req.method === "GET") {
+        const meta = this.sql.exec(
+          "SELECT size FROM blob_objects WHERE device = ? AND segment = ?",
+          device, segment,
+        ).toArray()[0];
+        if (!meta) return json({ error: "没有这个块" }, 404);
+
+        // 在任何 await 之前一次性读完游标，避免并发覆盖时读取到不一致的半新半旧块。
+        const rows = this.sql.exec(
+          "SELECT data FROM blob_chunks WHERE device = ? AND segment = ? ORDER BY part",
+          device, segment,
+        ).toArray();
+        const expected = Math.ceil(meta.size / 1_800_000);
+        if (rows.length !== expected) return json({ error: "数据块不完整" }, 500);
+        const chunks = rows.map((row) => row.data instanceof Uint8Array ? row.data : new Uint8Array(row.data));
+        let index = 0;
+        const stream = new ReadableStream({
+          pull(controller) {
+            if (index >= chunks.length) return controller.close();
+            controller.enqueue(chunks[index++]);
+          },
+        });
+        return new Response(stream, { headers: { "content-type": "application/octet-stream" } });
+      }
+
+      if (req.method === "DELETE") {
+        this.ctx.storage.transactionSync(() => {
+          this.sql.exec("DELETE FROM blob_chunks WHERE device = ? AND segment = ?", device, segment);
+          this.sql.exec("DELETE FROM blob_objects WHERE device = ? AND segment = ?", device, segment);
+        });
+        return json({ ok: true });
+      }
+      return json({ error: "不支持这个方法" }, 405);
+    } catch (e) {
+      return json({ error: String(e && e.message ? e.message : e) }, 500);
+    }
+  }
+}
+
 /** 块的种类：按块名前缀（分段名以年份开头） */
 function kindOf(device, segment) {
   if (device === "account") return "account";
@@ -47,25 +150,28 @@ async function route(req, env) {
   if (p[1] === "blob" && p.length === 4) {
     const [device, segment] = [p[2], p[3]];
     if (!NAME.test(device) || !NAME.test(segment)) return json({ error: "设备名或分段名不合法" }, 400);
-    const key = `${user}/${device}/${segment}`;
+    const store = userBlobStore(env, user);
+    const objectUrl = `https://blob.internal/blob/${encodeURIComponent(device)}/${encodeURIComponent(segment)}`;
     if (req.method === "PUT") {
-      const body = await req.arrayBuffer();
-      if (body.byteLength > MAX_BLOB) return json({ error: "太大了" }, 413);
-      await env.BUCKET.put(key, body);
+      // 音频等大块直接流入该用户自己的 Durable Object，不经过 D1，也不需要 R2。
+      const saved = await store.fetch(new Request(objectUrl, { method: "PUT", body: req.body }));
+      if (!saved.ok) return saved;
+      const info = await saved.json();
+      const size = Number(info.size);
+      if (!Number.isSafeInteger(size) || size < 0 || size > MAX_BLOB) return json({ error: "存储结果不合法" }, 500);
       const now = Date.now();
       await env.DB.prepare(
         "INSERT INTO blobs (user, device, segment, size, updated) VALUES (?, ?, ?, ?, ?) " +
           "ON CONFLICT (user, device, segment) DO UPDATE SET size = excluded.size, updated = excluded.updated",
-      ).bind(user, device, segment, body.byteLength, now).run();
+      ).bind(user, device, segment, size, now).run();
       return json({ updated: now });
     }
     if (req.method === "GET") {
-      const obj = await env.BUCKET.get(key);
-      if (!obj) return json({ error: "没有这个块" }, 404);
-      return new Response(obj.body, { headers: { "content-type": "application/octet-stream" } });
+      return store.fetch(new Request(objectUrl, { method: "GET" }));
     }
     if (req.method === "DELETE") {
-      await env.BUCKET.delete(key);
+      const removed = await store.fetch(new Request(objectUrl, { method: "DELETE" }));
+      if (!removed.ok) return removed;
       await env.DB.prepare("DELETE FROM blobs WHERE user = ? AND device = ? AND segment = ?").bind(user, device, segment).run();
       return json({ ok: true });
     }
@@ -111,13 +217,9 @@ async function route(req, env) {
   }
 
   if (p[1] === "account" && req.method === "DELETE") {
-    // 删账号：先删 R2 里这个账号的全部块，再删索引和账号
-    let cursor;
-    do {
-      const page = await env.BUCKET.list({ prefix: `${user}/`, cursor });
-      if (page.objects.length) await env.BUCKET.delete(page.objects.map((o) => o.key));
-      cursor = page.truncated ? page.cursor : undefined;
-    } while (cursor);
+    // 每个账号的数据块放在各自的 Durable Object 中，删除账号时一并清空。
+    const removed = await userBlobStore(env, user).fetch(new Request("https://blob.internal/account", { method: "DELETE" }));
+    if (!removed.ok) return removed;
     await env.DB.batch([
       env.DB.prepare("DELETE FROM blobs WHERE user = ?").bind(user),
       env.DB.prepare("DELETE FROM sessions WHERE user = ?").bind(user),
@@ -125,7 +227,6 @@ async function route(req, env) {
     ]);
     return json({ ok: true });
   }
-
   return json({ error: "没有这个接口" }, 404);
 }
 
