@@ -82,7 +82,7 @@ Everything is stored on your computer. To sync between devices, pick one, or don
 - **iCloud**: all-Apple devices, no sign-up
 - **Cloud drive (WebDAV)**: Nextcloud, a NAS and the like; works with Android and Windows too, no sign-up
 - **Official server**: open sign-up, no invite code, 100 MB of sync space per account, 50 accounts for now; on-screen text from your computer is never uploaded
-- **Self-hosted**: the server lives in [`server/`](server/README.md); `docker compose up -d` gets it running
+- **Self-hosted**: the full server (optional transcription, models and maps) is in [`server/`](server/README.md); for sync only on Cloudflare Free without R2 or a credit card, see [`sync-server/`](sync-server/README.md)
 - **Sync folder** (advanced): a folder OneDrive, Dropbox or Syncthing already syncs, between computers
 
 Either way, records are compressed and encrypted on your device before they leave it, so the server or cloud drive only ever sees ciphertext. The official model is separate from sync: with iCloud or WebDAV you can still sign in to a Beayy account for the official model (50,000 tokens a month free).
@@ -161,7 +161,7 @@ UI only: open `ui/index.html` in a browser. It reads the made-up sample data in 
 | `android` | Kotlin shell for the Android app: reads per-app usage and calls the same Rust core over JNI; the UI is a web view loading `ui/` |
 | `ios` | Swift shells for the iPhone and Apple Watch apps (XcodeGen): location stops, watch recording, encrypted upload; the UI is a web view loading `ui/` |
 | `server` | Server: sync (ciphertext only) + transcription + optional model and map proxies, in Python (FastAPI + SQLite + local files). Run it with Docker on your own computer or server, see [`server/README.md`](server/README.md); the official instance runs the same code |
-| `sync-server` | The old Cloudflare sync server (Workers + R2 + D1), same API as `server`, no longer maintained |
+| `sync-server` | Self-hosted sync-only service on Cloudflare Workers + D1 + SQLite Durable Objects; free signup, no R2 or credit card. See [`sync-server/README.md`](sync-server/README.md) |
 | `docs/images` | Images for the READMEs (English ones in `en/`), showing made-up sample data |
 
 </details>

@@ -84,7 +84,7 @@ Claude 桌面版、Cursor 的配置在「设置 → AI → 连接」，复制粘
 - **iCloud**：设备都是苹果的，不用注册
 - **网盘（WebDAV）**：坚果云、NAS 这类，安卓和 Windows 也能用，不用注册
 - **官方服务器**：开放注册，不要邀请码，每个账号 100MB 同步空间，先开 50 个名额；电脑屏幕上的文字不上传，只留在电脑上
-- **自己部署**：服务端代码在 [`server/`](server/README.md)，`docker compose up -d` 就能起
+- **自己部署**：完整服务端（含可选转写、模型和地图）见 [`server/`](server/README.md)；只需要同步、部署在 Cloudflare 的，见 [`sync-server/`](sync-server/README.md)
 - **同步文件夹**（高级）：OneDrive、Syncthing 这类会同步的文件夹，电脑之间用
 
 不管哪种，记录都在本机压缩、加密后再传出去，服务器和网盘只拿到密文。官方模型和同步方式分开：用 iCloud、网盘同步，也能另外登录 Beayy 账号用官方模型（每月送 5 万 token）。
@@ -165,7 +165,7 @@ cd android && ./build.sh      # 出 app/build/outputs/apk/debug/app-debug.apk；
 | `android` | 安卓 app 的 Kotlin 外壳：读每个 app 的使用时长、经 JNI 调同一个 Rust 核心；界面是网页视图加载 `ui/` |
 | `ios` | iPhone 和 Apple Watch app 的 Swift 外壳（XcodeGen）：定位记停留点、手表录音、登录账号加密上传；界面是网页视图加载 `ui/` |
 | `server` | 服务端：同步（只存密文）＋录音转写＋可选的模型、地图代理，Python（FastAPI＋SQLite＋本地文件）。用 Docker 在自己的电脑或服务器上跑，见 [`server/README.md`](server/README.md)；官方实例跑的也是它 |
-| `sync-server` | 同步服务的旧 Cloudflare 版（Workers＋R2＋D1），接口和 `server` 相同，不再维护 |
+| `sync-server` | Cloudflare Workers＋D1＋SQLite Durable Objects 的纯同步服务；免费注册、无需 R2／信用卡；部署见 [`sync-server/README.md`](sync-server/README.md) |
 | `docs/images` | README 里的图（英文版在 `en/`），界面里是虚构的样例数据 |
 
 </details>

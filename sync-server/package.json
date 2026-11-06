@@ -1,0 +1,12 @@
+{
+  "name": "beayy-sync-cloudflare",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy && wrangler d1 execute beayy-sync-selfhosted --remote --yes --file=./schema.sql",
+    "deploy:local": "node ./deploy.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "4.45.0"
+  }
+}
