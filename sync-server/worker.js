@@ -234,7 +234,6 @@ async function v2(req, env, p, url) {
     await env.DB.prepare("UPDATE users SET salt = ?, auth_hash = ?, wrapped_key = ? WHERE user = ?").bind(b.salt, await sha256(b.auth), b.wrapped_key, user).run();
     return json({ ok: true });
   }
-  // 官方模型：开通了的账号经这里调，真正的模型密钥只在服务器上（LLM_KEY）。按月记 token，超额、没开通、停用都拒绝
   if (p[0] === "account" && M === "GET") {
     const me = await env.DB.prepare("SELECT email, display_name, avatar, profile_updated FROM users WHERE user = ?").bind(user).first();
     const { results } = await env.DB.prepare("SELECT id, name, device, created, last_seen FROM sessions WHERE user = ? ORDER BY created").bind(user).all();
@@ -281,17 +280,6 @@ async function same(a, b) {
   let d = 0;
   for (let i = 0; i < x.length; i++) d |= x.charCodeAt(i) ^ y.charCodeAt(i);
   return d === 0;
-}
-
-function b64url(bytes) {
-  let s = "";
-  for (const b of bytes) s += String.fromCharCode(b);
-  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-async function hmac(secret, msg) {
-  const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return b64url(new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(msg))));
 }
 
 function json(obj, status = 200) {
