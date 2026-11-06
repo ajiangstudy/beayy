@@ -11,6 +11,18 @@ const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
 /** 设备上主密码派生用的参数（Argon2id）；服务器只是原样存取 */
 const KDF = { alg: "argon2id", m: 65536, t: 3, p: 1 };
 
+// 兼容旧账号或异常数据：kdf 只是 KDF 参数元数据，当前客户端也使用这组固定参数。
+// 字段缺失或损坏时回退默认值，不要让登录前检查因为 JSON.parse 崩溃。
+function readKdf(value) {
+  if (typeof value !== "string") return KDF;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : KDF;
+  } catch (_e) {
+    return KDF;
+  }
+}
+
 
 export default { async fetch(req, env) { try { return await route(req, env); } catch (e) { return json({ error: String(e && e.message ? e.message : e) }, 500); } } };
 
@@ -276,7 +288,7 @@ async function v2(req, env, p, url) {
   if (p[0] === "prelogin" && M === "GET") {
     const email = (url.searchParams.get("email") || "").trim().toLowerCase();
     const row = await env.DB.prepare("SELECT salt, kdf FROM users WHERE email = ?").bind(email).first();
-    if (row && row.salt) return json({ salt: row.salt, kdf: JSON.parse(row.kdf) });
+    if (row && row.salt) return json({ salt: row.salt, kdf: readKdf(row.kdf) });
     return json({ salt: (await sha256("beayy-fake-salt:" + env.INVITE + ":" + email)).slice(0, 32), kdf: KDF });
   }
   if (p[0] === "signup" && M === "GET") { const open = env.OPEN_SIGNUP === "1" || env.OPEN_SIGNUP === "true"; return json({ open, invite: !!env.INVITE && !open, quota: 0, trial_days: 0 }); }
