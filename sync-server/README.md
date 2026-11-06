@@ -8,7 +8,7 @@
 
 - Cloudflare Worker：worker.js
 - D1 初始化：schema.sql
-- R2：保存 <user>/<device>/<segment> 对应的密文对象
+- R2：保存 `<user>/<device>/<segment>` 对应的密文对象
 - D1：保存用户、设备会话，以及每个 blob 的大小和更新时间
 
 每个 blob 最大 50 MiB。当前版本每个账号不设容量上限（/v2/account 返回 storage.quota: 0，表示不限额）。同步块不会由 Worker 定时删除；只有客户端主动 DELETE 或用户删除账号时才清除。
