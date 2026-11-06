@@ -1,0 +1,8 @@
+{
+  "name": "beayy-sync-cloudflare",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "node ./deploy.mjs"
+  }
+}
