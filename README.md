@@ -84,7 +84,7 @@ Claude 桌面版、Cursor 的配置在「设置 → AI → 连接」，复制粘
 - **iCloud**：设备都是苹果的，不用注册
 - **网盘（WebDAV）**：坚果云、NAS 这类，安卓和 Windows 也能用，不用注册
 - **官方服务器**：开放注册，不要邀请码，每个账号 100MB 同步空间，先开 50 个名额；电脑屏幕上的文字不上传，只留在电脑上
-- **自己部署**：服务端代码在 [`server/`](server/README.md)，`docker compose up -d` 就能起
+- **自己部署**：完整服务端（含可选转写、模型和地图）见 [`server/`](server/README.md)；只需要同步、部署在 Cloudflare 的，见 [`sync-server/`](sync-server/README.md)
 - **同步文件夹**（高级）：OneDrive、Syncthing 这类会同步的文件夹，电脑之间用
 
 不管哪种，记录都在本机压缩、加密后再传出去，服务器和网盘只拿到密文。官方模型和同步方式分开：用 iCloud、网盘同步，也能另外登录 Beayy 账号用官方模型（每月送 5 万 token）。
