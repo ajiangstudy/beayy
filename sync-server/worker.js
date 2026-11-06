@@ -4,7 +4,7 @@
 // v2 账号：邮箱＋主密码。主密码只在设备上用，派生出两把：登录校验值（服务器只存它的哈希）和包数据密钥的钥匙
 // （服务器只存包好的数据密钥，解不开）。每台设备登录后拿自己的令牌，可单独移除。另有恢复码，忘了主密码时重设。
 
-const NAME = /^[\\p{L}\\p{N}._-]{1,80}$/u;
+const NAME = /^[\p{L}\p{N}._-]{1,80}$/u;
 const MAX_BLOB = 50 * 1024 * 1024;
 const HEX64 = /^[0-9a-f]{64}$/;
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
@@ -17,20 +17,21 @@ export default { async fetch(req, env) { try { return await route(req, env); } c
 /** 块的种类：按块名前缀（分段名以年份开头） */
 function kindOf(device, segment) {
   if (device === "account") return "account";
-  for (const k of ["audio", "transcript", "places", "sum"]) if (segment.startsWith(k + ".")) return k === "sum" ? "summary" : k;
+  for (const k of ["audio", "transcript", "places", "health", "daily", "sum"]) if (segment.startsWith(k + ".")) return k === "sum" ? "summary" : k;
   return segment === "names.json" ? "account" : "segment";
 }
 
 async function route(req, env) {
   const url = new URL(req.url);
   const p = url.pathname.split("/").filter(Boolean);
+  if (p[0] === "v2" && p[1] === "health" && req.method === "GET") return json({ ok: true });
   if (p[0] === "v2") return v2(req, env, p.slice(1), url);
   if (p[0] !== "v1") return json({ error: "没有这个接口" }, 404);
 
   if (p[1] === "register" && req.method === "POST") {
-    // 第一版要邀请码，防止被陌生人注册
+    const open = env.OPEN_SIGNUP === "1" || env.OPEN_SIGNUP === "true";
     const invite = req.headers.get("x-invite") || "";
-    if (!env.INVITE || !(await same(invite, env.INVITE))) return json({ error: "邀请码不对" }, 403);
+    if (!open && (!env.INVITE || !(await same(invite, env.INVITE)))) return json({ error: "邀请码不对" }, 403);
     const user = hex(rand(12));
     const token = hex(rand(32));
     await env.DB.prepare("INSERT INTO users (user, token_hash, created) VALUES (?, ?, ?)").bind(user, await sha256(token), Date.now()).run();
