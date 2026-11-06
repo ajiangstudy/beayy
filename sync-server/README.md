@@ -23,7 +23,7 @@ Windows、macOS、Linux 都可以运行同一条命令。脚本使用固定版�
 
 ## 免费额度与边界
 
-本方案只用 Cloudflare Workers Free、D1 Free 和 SQLite Durable Objects Free，不启用任何付费服务或按量付费项目。Cloudflare 免费额度不是无限量：Workers 每天有请求和 CPU 限额；D1 每天有读写限额；SQLite Durable Objects 的免费账户存储合计为 5 GB，并有每日请求、SQL 读写和计算时长额度。超过免费额度时，相关操作会报错／暂停，而不是自动升级套餐或自动扣费。请勿在 Cloudflare 控制台升级到 Workers Paid。
+本方案只用 Cloudflare Workers Free、D1 Free 和 SQLite Durable Objects Free，不启用任何付费服务或按量付费项目。按目前官方免费额度，Workers 为每天 100,000 次请求、每次 10 ms CPU；D1 为每天 500 万行读取、10 万行写入，每个数据库 500 MB；SQLite Durable Objects 为每个 Cloudflare 账户合计 5 GB 存储、每天 100,000 次请求、5,000 万行读取和 10 万行写入。额度可能由 Cloudflare 调整，部署前请以官方价格和限额页面为准。超过 Free 额度时，相关操作会报错／暂停，不会在 Free 计划上自动升级或自动扣费。请勿在 Cloudflare 控制台升级到 Workers Paid。
 
 建议把这套方案用于个人或小规模自托管。免费 DO 存储额度是 Cloudflare 账户级共享额度，不是每个 Beayy 用户各有 5 GB；开放注册的所有用户共用部署者的免费存储池。
 
