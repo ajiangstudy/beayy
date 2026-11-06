@@ -4,15 +4,13 @@
 // v2 账号：邮箱＋主密码。主密码只在设备上用，派生出两把：登录校验值（服务器只存它的哈希）和包数据密钥的钥匙
 // （服务器只存包好的数据密钥，解不开）。每台设备登录后拿自己的令牌，可单独移除。另有恢复码，忘了主密码时重设。
 
-const NAME = /^[A-Za-z0-9._-]{1,80}$/;
+const NAME = /^[\\p{L}\\p{N}._-]{1,80}$/u;
 const MAX_BLOB = 50 * 1024 * 1024;
 const HEX64 = /^[0-9a-f]{64}$/;
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
 /** 设备上主密码派生用的参数（Argon2id）；服务器只是原样存取 */
 const KDF = { alg: "argon2id", m: 65536, t: 3, p: 1 };
 
-/** 录音块（audio.<段 id>）的兜底期限：电脑转写完 7 天后自己删；电脑关机太久没转的，到这个天数服务器删 */
-const  = 30;
 
 export default { async fetch(req, env) { try { return await route(req, env); } catch (e) { return json({ error: String(e && e.message ? e.message : e) }, 500); } } };
 
@@ -26,7 +24,6 @@ function kindOf(device, segment) {
 async function route(req, env) {
   const url = new URL(req.url);
   const p = url.pathname.split("/").filter(Boolean);
-  // 转写服务回报用量：不用账号令牌，用签名
   if (p[0] === "v2") return v2(req, env, p.slice(1), url);
   if (p[0] !== "v1") return json({ error: "没有这个接口" }, 404);
 
@@ -238,7 +235,7 @@ async function v2(req, env, p, url) {
   }
   // 官方模型：开通了的账号经这里调，真正的模型密钥只在服务器上（LLM_KEY）。按月记 token，超额、没开通、停用都拒绝
   if (p[0] === "account" && M === "GET") {
-    const me = await env.DB.prepare("SELECT email, display_name, avatar, profile_updated").bind(user).first();
+    const me = await env.DB.prepare("SELECT email, display_name, avatar, profile_updated FROM users WHERE user = ?").bind(user).first();
     const { results } = await env.DB.prepare("SELECT id, name, device, created, last_seen FROM sessions WHERE user = ? ORDER BY created").bind(user).all();
     const storage = await env.DB.prepare("SELECT COALESCE(SUM(size), 0) AS used FROM blobs WHERE user = ?").bind(user).first();
     return json({ user, email: me ? me.email : null, session: who.session, sessions: results, storage: { used: storage ? storage.used : 0, quota: 0 },
