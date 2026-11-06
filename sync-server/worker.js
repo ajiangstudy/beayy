@@ -23,7 +23,9 @@ function kindOf(device, segment) {
 
 async function route(req, env) {
   const url = new URL(req.url);
-  const p = url.pathname.split("/").filter(Boolean);
+  let p;
+  try { p = url.pathname.split("/").filter(Boolean).map((part) => decodeURIComponent(part)); }
+  catch (_e) { return json({ error: "路径不合法" }, 400); }
   if (p[0] === "v2" && p[1] === "health" && req.method === "GET") return json({ ok: true });
   if (p[0] === "v2") return v2(req, env, p.slice(1), url);
   if (p[0] !== "v1") return json({ error: "没有这个接口" }, 404);
@@ -145,7 +147,12 @@ async function auth(req, env) {
 // ---------- v2：账号 ----------
 
 async function body(req) {
-  try { return await req.json(); } catch (e) { return {}; }
+  try {
+    const value = await req.json();
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch (_e) {
+    return {};
+  }
 }
 
 /** 这台设备登录：发一个设备令牌 */
