@@ -165,7 +165,7 @@ cd android && ./build.sh      # 出 app/build/outputs/apk/debug/app-debug.apk；
 | `android` | 安卓 app 的 Kotlin 外壳：读每个 app 的使用时长、经 JNI 调同一个 Rust 核心；界面是网页视图加载 `ui/` |
 | `ios` | iPhone 和 Apple Watch app 的 Swift 外壳（XcodeGen）：定位记停留点、手表录音、登录账号加密上传；界面是网页视图加载 `ui/` |
 | `server` | 服务端：同步（只存密文）＋录音转写＋可选的模型、地图代理，Python（FastAPI＋SQLite＋本地文件）。用 Docker 在自己的电脑或服务器上跑，见 [`server/README.md`](server/README.md)；官方实例跑的也是它 |
-| `sync-server` | Cloudflare Workers＋D1＋R2 的纯同步服务（独立部署，不含模型、转写和地图）；部署见 [`sync-server/README.md`](sync-server/README.md) |
+| `sync-server` | Cloudflare Workers＋D1＋SQLite Durable Objects 的纯同步服务；免费注册、无需 R2／信用卡；部署见 [`sync-server/README.md`](sync-server/README.md) |
 | `docs/images` | README 里的图（英文版在 `en/`），界面里是虚构的样例数据 |
 
 </details>
