@@ -1,69 +1,60 @@
-# Beayy Cloudflare 同步服务（自托管）
+# Beayy Cloudflare 同步服务（免费自托管）
 
-这里只实现 **Beayy 多设备同步**。Worker 提供账号注册／登录、设备会话管理、加密数据块上传／下载／删除、增量列表和存储用量统计。D1 保存账号与索引，R2 保存客户端已经压缩、端到端加密的数据块；服务器不持有解密密钥。
+这里只实现 **Beayy 多设备同步**。默认开放免费注册，不需要 Beayy 付费账号、邀请码、Cloudflare API Token、信用卡或自定义域名。
 
-本目录不部署模型、FunASR、转写任务、地图代理、LLM 网关、Queues 或 Durable Objects。这些都不属于同步服务，留作以后独立扩展。录音、地点、健康、摘要等客户端数据如以普通同步块上传，仍由通用 blob 接口原样存储，不会在服务器端处理或自动过期。
+## 一条命令部署
 
-## 资源
-
-- Cloudflare Worker：worker.js
-- D1 初始化：schema.sql
-- R2：保存 `<user>/<device>/<segment>` 对应的密文对象
-- D1：保存用户、设备会话，以及每个 blob 的大小和更新时间
-
-每个 blob 最大 50 MiB。当前版本每个账号不设容量上限（/v2/account 返回 storage.quota: 0，表示不限额）。同步块不会由 Worker 定时删除；只有客户端主动 DELETE 或用户删除账号时才清除。
-
-## 部署
-
-需要 Cloudflare 账号、Node.js 和 Wrangler 4。
+准备一个免费的 Cloudflare 账号，并安装 Node.js 20 或更新的 LTS 版本。下载仓库后：
 
 ```bash
 cd sync-server
-npx wrangler@4 login
-
-# 创建独立资源，不要把旧官方实例的 D1 ID 或生产 bucket 复用到自托管实例
-npx wrangler@4 r2 bucket create beayy-sync-selfhosted
-npx wrangler@4 d1 create beayy-sync-selfhosted
+npm run deploy
 ```
 
-把 D1 创建命令返回的 UUID 填到 wrangler.jsonc 的 d1_databases[0].database_id，再初始化数据库：
+第一次运行会自动打开 Cloudflare 登录页面。登录后脚本会自动创建并绑定 D1、创建 SQLite Durable Object 命名空间、初始化数据库并部署 Worker；不需要手动创建资源、复制 database_id、填写密钥或配置 DNS。部署完成后 Wrangler 会显示一个 `https://....workers.dev` 地址，把它填进 Beayy「设置 → 连接 → 同步服务器」。
+
+Windows、macOS、Linux 都可以运行同一条命令。脚本使用固定版本的 Wrangler，避免不同电脑上的 CLI 版本不一致。
+
+## 为什么不用 R2
+
+本版不绑定 R2。Cloudflare 的 R2 开通流程需要先添加 R2 subscription 并走 checkout；为了让免费部署不碰支付信息，数据块改为存放在 SQLite-backed Durable Objects。D1 只保存账号、设备会话和块索引。每个账号使用独立的 Durable Object，互相隔离。
+
+每个数据块最大 50 MiB，Durable Object 内部按 1.8 MB 分块存入 SQLite（低于 Cloudflare 2 MB 的单行上限）。上传仍是客户端已经压缩并端到端加密的密文，服务端没有解密密钥。客户端可以原样上传录音、地点、健康和摘要等同步块；服务端不会运行转写、地图或模型，也不会定时清理同步数据。
+
+## 免费额度与边界
+
+本方案只用 Cloudflare Workers Free、D1 Free 和 SQLite Durable Objects Free，不启用任何付费服务或按量付费项目。Cloudflare 免费额度不是无限量：Workers 每天有请求和 CPU 限额；D1 每天有读写限额；SQLite Durable Objects 的免费账户存储合计为 5 GB，并有每日请求、SQL 读写和计算时长额度。超过免费额度时，相关操作会报错／暂停，而不是自动升级套餐或自动扣费。请勿在 Cloudflare 控制台升级到 Workers Paid。
+
+建议把这套方案用于个人或小规模自托管。免费 DO 存储额度是 Cloudflare 账户级共享额度，不是每个 Beayy 用户各有 5 GB；开放注册的所有用户共用部署者的免费存储池。
+
+## 注册方式
+
+默认 `OPEN_SIGNUP` 为 `true`，任何知道服务地址的人都能免费注册，不要求邀请码。若只给自己和家人使用，把 `wrangler.jsonc` 的 `vars.OPEN_SIGNUP` 改成 `"false"`，然后设置邀请码：
 
 ```bash
-npx wrangler@4 d1 execute beayy-sync-selfhosted --remote --file=./schema.sql
+npx wrangler@4.45.0 secret put INVITE
+npm run deploy
 ```
 
-默认使用邀请码注册。设置一个只有你知道的高强度邀请码：
+开放注册适合私人部署时要注意：服务地址公开后，其他人也可以创建账号并使用你的免费存储池。
 
-```bash
-npx wrangler@4 secret put INVITE
-```
+## 数据与备份
 
-也可以在 wrangler.jsonc 的 vars.OPEN_SIGNUP 改成 "true" 开放注册；开放注册时不需要配置 INVITE。
+- D1：账号、登录会话、数据块索引（`schema.sql`）。
+- Durable Objects：每个用户自己的 SQLite 数据库，保存该用户的加密数据块。
+- 不保存模型、转写或地图配置；这些功能留作以后独立扩展。
+- 请定期备份 D1，并通过 Cloudflare Durable Objects 的 SQLite 备份／恢复能力维护数据。同步服务不是客户端本地数据的唯一副本。
 
-部署：
+## 协议
 
-```bash
-npx wrangler@4 deploy
-```
+接口沿用 Beayy 客户端协议：
 
-Wrangler 会给出 workers.dev 访问地址。把这个 HTTPS 地址填到 Beayy 的「设置 → 连接 → 同步服务器」及注册／登录界面。需要自定义域名时，在 Cloudflare 控制台给该 Worker 添加自己的 Custom Domain；本配置不会绑定 sync.beayy.com，也不会连接仓库旧配置中的 D1 数据库 ID。
+- `GET /v2/signup`、`GET /v2/prelogin?email=...`
+- `POST /v2/register`、`POST /v2/login`、`POST /v2/recover`
+- `POST /v2/claim`（旧 v1 账号迁移）、`POST /v2/password`
+- `GET /v2/account`、`POST /v2/profile`、`DELETE /v2/sessions/{id}`
+- `POST /v1/register`（旧令牌注册）、`PUT/GET/DELETE /v1/blob/{device}/{segment}`
+- `GET /v1/list`（支持 `since`、`prefix`、`device`）、`GET /v1/usage`、`GET /v1/devices`、`DELETE /v1/account`
+- `GET /v2/health`
 
-## API
-
-接口沿用现有 Beayy 客户端协议：
-
-- GET /v2/signup、GET /v2/prelogin?email=...
-- POST /v2/register、POST /v2/login、POST /v2/recover
-- POST /v2/claim（旧 v1 账号迁移）、POST /v2/password
-- GET /v2/account、POST /v2/profile、DELETE /v2/sessions/{id}
-- POST /v1/register（旧令牌注册）、PUT/GET/DELETE /v1/blob/{device}/{segment}
-- GET /v1/list（支持 since、prefix、device）、GET /v1/usage、GET /v1/devices、DELETE /v1/account
-- GET /v2/health
-
-需要认证的接口沿用 Authorization: Bearer <user>:<token>。数据块按用户隔离，R2 key 不接受客户端自定义路径，设备名／块名会先校验。
-
-## 数据与迁移说明
-
-客户端才持有主密码、恢复码和数据密钥。D1 中的 auth_hash、recovery_hash 是派生校验值的 SHA-256；wrapped_key 是客户端包好的数据密钥；R2 内容是密文。请同时备份 D1 和 R2，缺少任意一方都可能导致同步索引或对象无法恢复。
-
-本版 schema 是新建自托管实例用的精简结构。已有旧 Cloudflare 同步实例的 D1 表可能包含模型／地图的历史字段；Worker 不再读写这些字段，执行本文件不会删除现有数据或字段。不要对已有生产库直接重建或清空。
+需要认证的接口沿用 `Authorization: Bearer <user>:<token>`。
