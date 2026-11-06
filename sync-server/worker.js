@@ -247,6 +247,7 @@ async function v2(req, env, p, url) {
     const storage = await env.DB.prepare("SELECT COALESCE(SUM(size), 0) AS used FROM blobs WHERE user = ?").bind(user).first();
     return json({ user, email: me ? me.email : null, session: who.session, sessions: results, storage: { used: storage ? storage.used : 0, quota: 0 },
       profile: me ? { name: me.display_name, avatar: me.avatar, updated: me.profile_updated } : null,
+      services: { plan: null },
     });
   }
   // 显示名称和头像
