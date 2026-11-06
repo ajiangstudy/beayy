@@ -1,16 +1,21 @@
-// Beayy 纯同步服务（自托管）。不绑定官方域名，也不复用官方 D1 数据库。
-// 首次部署：创建 R2 bucket 和 D1 database，填入下方 database_id，再执行 schema.sql。
+// Free-tier self-hosted sync service: D1 stores account metadata; SQLite Durable Objects store encrypted blobs.
+// No R2 subscription, payment method, custom domain, or account-specific ID is required.
 {
   "name": "beayy-sync-selfhosted",
   "main": "worker.js",
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
   "preview_urls": false,
-  "vars": { "OPEN_SIGNUP": "false" },
-  "r2_buckets": [
-    { "binding": "BUCKET", "bucket_name": "beayy-sync-selfhosted" }
-  ],
+  "vars": { "OPEN_SIGNUP": "true" },
   "d1_databases": [
-    { "binding": "DB", "database_name": "beayy-sync-selfhosted", "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID" }
+    { "binding": "DB", "database_name": "beayy-sync-selfhosted" }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "BLOBS", "class_name": "BeayyBlobStore" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["BeayyBlobStore"] }
   ]
 }
